@@ -50,7 +50,8 @@ def acyl_group(cystype, final_res, add_acyl):
 		'9:10'+bdt[2],'10:11'+bdt[2],'11:12'+bdt[2],'1:13'+bdt[1],'13:14'+bdt[2],'14:15'+bdt[2],'15:16'+bdt[2]]
 		ant=[': 	2 	180.0 	25.0', ': 	2 	120.0 	25.0', ': 	2 	180.0 	25.0', ': 	2 	120.0 	45.0']
 		angle = ['1:2:3'+ant[0],'2:3:4'+ant[1],'2:3:5'+ant[2],'3:5:6'+ant[2],'5:6:7'+ant[3],'6:7:8'+ant[2],'4:9:10'+ant[2],\
-		'9:10:11'+ant[2],'10:11:12'+ant[2],'1 13 14'+ant[2],'13 14 15'+ant[2],'14 15 16'+ant[2]]
+		'9:10:11'+ant[2],'10:11:12'+ant[2],'1:13:14'+ant[2],'13:14:15'+ant[2],'14:15:16'+ant[2]]
+
 	else:
 		sys.exit("acyl group is not possible for this residue: "+str(cystype)+'\t'+str(add_acyl))
 	return acyl_type, atom_type, bond, angle, order
@@ -59,7 +60,6 @@ def acyl_group(cystype, final_res, add_acyl):
 def read_topology(itp):
 	## reads in topology seperated by '[' 
 	section_number=0
-	# sections=[[],[],[],[],[],[],[]]
 	sections=[[]]
 	for line in open(itp, 'r').readlines():
 		if len(line.split()) > 0: 
@@ -70,16 +70,19 @@ def read_topology(itp):
 	return sections
 
 def update(sections, add_acyl,cystype):
-	final_res=False
-	if sections[2][-1].split()[2] == str(add_acyl):
-		final_res=True
+	## checks if selected residue is a CYS
 	is_cys=False
 	for residues in sections[2]:
 		if residues.split()[2] == str(add_acyl) and residues.split()[3] == 'CYS':
 			is_cys = True
 	if not is_cys:
 		sys.exit("acyl group is not possible for this residue: "+str(cystype)+'\t'+str(add_acyl))
-	acyl_type, atom_type, bond, angle,order = acyl_group(cystype, final_res, add_acyl)
+	##checks if selected residue is the final residue
+	final_res=False
+	if sections[2][-1].split()[2] == str(add_acyl):
+		final_res=True
+
+	acyl_type, atom_type, bond, angle,order = acyl_group(cystype, final_res, add_acyl) ## fetches acyl group info
 	offset=0
 	offset_ini=0
 	bond_offset=0
@@ -88,19 +91,19 @@ def update(sections, add_acyl,cystype):
 	for seg_val,segment in enumerate(sections):
 		cont=False
 		for line_val,line in enumerate(segment):
-			if seg_val < 2:
+			if seg_val < 2:  ### gumpf at start of itp file 
 				new = re.sub('\n','',line)
 				sections[seg_val][line_val]=new
-			if seg_val == 2:
-				if len(line.split()) > 5: 
-					if int(line.split()[2]) in [add_acyl]:
-						if line.split()[4] =='BB':
+			if seg_val == 2: ### [ ATOMS ] 
+				if len(line.split()) > 5: ## removes empty lines
+					if int(line.split()[2]) in [add_acyl]:  ## if correct CYS
+						if line.split()[4] =='BB':  ##  updates BB bead to correct bead type
 							new = '\t'+str(int(line.split()[0]))+'\t'+acyl_type[0].split(':')[0]+'\t'+str(line.split()[2])+\
 							'\t'+cystype+'\t'+atom_type[0]+'\t'+str(int(line.split()[5]))+'\t'+acyl_type[0].split(':')[1]+'.0000'
 							sections[seg_val][line_val]=new
 						elif line.split()[4] =='SC1':
 							offset_ini=int(line.split()[0])
-							for atoms in range(1,len(acyl_type)):
+							for atoms in range(1,len(acyl_type)): ## runs through acyl group and adds to [ ATOMS ]
 								new = '\t'+str(int(line.split()[0])+atoms-1)+'\t'+acyl_type[atoms].split(':')[0]+'\t'+str(line.split()[2])\
 								+'\t'+cystype+'\t'+atom_type[atoms]+'\t'+str(int(line.split()[5])+atoms-1)+'\t'+acyl_type[atoms].split(':')[1]+'.0000'
 								if atoms==1:
@@ -108,7 +111,7 @@ def update(sections, add_acyl,cystype):
 								else:
 									sections[seg_val].insert(line_val+atoms-1, new)
 							offset=atoms-1
-					elif int(line.split()[2]) not in [add_acyl]:
+					elif int(line.split()[2]) not in [add_acyl]: ## adds other beads back into to the atoms sections with updated indexes
 						new = '\t'+str(int(line.split()[0])+offset)+'\t'+line.split()[1]+'\t'+str(line.split()[2])\
 						+'\t'+line.split()[3]+'\t'+line.split()[4]+'\t'+str(int(line.split()[5])+offset)+'\t'+str(line.split()[6])
 						sections[seg_val][line_val]=new
@@ -119,25 +122,23 @@ def update(sections, add_acyl,cystype):
 						if int(line.split()[1]) != offset_ini:
 							col1=greater_than(line.split()[0], offset_ini, offset)
 							col2=greater_than(line.split()[1], offset_ini, offset)
-
 							if len(line.split()) == 5:	
 								new = col1+'\t'+col2+'\t'+line.split()[2]+'\t'+line.split()[3]+'\t'+line.split()[4]
 							if len(line.split())==7:	
 								new = col1+'\t'+col2+'\t'+str(int(line.split()[2]))+'\t'+line.split()[3]+'\t'+line.split()[4]+'\t'+line.split()[5]+'\t'+line.split()[6]
-						if cont==True and int(line.split()[1]) == offset_ini:
+							sections[seg_val][line_val]=new
+						elif cont==True and int(line.split()[1]) == offset_ini:
 							insertion=line_val
-							for bond_line in bond:
+							for offset_lines, bond_line in enumerate(bond):
 								new = str(int(bond_line.split(':')[0])+offset_ini-2)+'\t'+str(int(bond_line.split(':')[1])+offset_ini-2)\
 								+bond_line.split(':')[2]+'\t;\t'+cystype
 								additional_bonds.append(new)
-							bond_offset=atoms
-						else:
-							sections[seg_val][line_val]=new
-							if bond_offset > 0 and line_val==len(sections[seg_val])-1:
+							bond_offset=offset_lines
+						if bond_offset > 0 and int(line_val)==len(sections[seg_val])-1:
 								del sections[seg_val][insertion]
 								for val,bond in enumerate(additional_bonds):
 									sections[seg_val].insert(insertion+val,bond)
-								break
+								break							
 					except:
 						new = re.sub('\n','',line)
 						sections[seg_val][line_val]=new
@@ -167,22 +168,25 @@ def update(sections, add_acyl,cystype):
 							col3=greater_than(line.split()[2], offset_ini, offset)
 
 							new = col1+'\t'+col2+'\t'+col3+'\t'+line.split()[3]+'\t'+line.split()[4]+'\t'+line.split()[5]+'\t'+line.split()[6]+'\t'+line.split()[7]
-						if cont==True and int(line.split()[0]) > offset_ini:
 							sections[seg_val][line_val]=new
-							cont=False
-							insertion=line_val
-							for angle_line in angle:
-								new = str(int(angle_line.split(':')[0])+offset_ini-2)\
-									+'\t'+str(int(angle_line.split(':')[1])+offset_ini-2)\
-									+'\t'+str(int(angle_line.split(':')[2])+offset_ini-2)\
-									+angle_line.split(':')[3]+'\t:\t'+cystype						
-								additional_angles.append(new)
-							angle_offset=atoms
-						else:
-							sections[seg_val][line_val]=new
-							if angle_offset > 0 and line_val==len(sections[seg_val])-1:
-								for val,bond in enumerate(additional_angles):
-									sections[seg_val].insert(insertion+val,bond)
+						if cont==True:
+							if int(line.split()[0]) > offset_ini or line_val==len(sections[seg_val])-1:
+								if line_val==len(sections[seg_val])-1:
+									insertion=line_val+1
+								else:
+									insertion=line_val
+								sections[seg_val][line_val]=new
+								cont=False
+								for offset_angle_val, angle_line in enumerate(angle):
+									new = str(int(angle_line.split(':')[0])+offset_ini-2)\
+										+'\t'+str(int(angle_line.split(':')[1])+offset_ini-2)\
+										+'\t'+str(int(angle_line.split(':')[2])+offset_ini-2)\
+										+angle_line.split(':')[3]+'\t:\t'+cystype	
+									additional_angles.append(new)
+								angle_offset=offset_angle_val
+						if angle_offset > 0 and line_val==len(sections[seg_val])-1:
+								for val,angle in enumerate(additional_angles):
+									sections[seg_val].insert(insertion+val,angle)
 								break
 					except:
 						new = re.sub('\n','',line)
@@ -282,10 +286,14 @@ def add_acyl_tails(pdb, add_acyl,cystype,zscale):
 					CYS_new.append(pdbline%((add_acyl,atom_type[atom],cystype,line_sep['ch'],line_sep['rid'],line_sep['x']\
 					+(vxsc*int(order[atom].split(':')[0]))+int(order[atom].split(':')[1]),line_sep['y']+(vysc*int(order[atom].split(':')[0])),\
 					line_sep['z']+float(vzsc*int(order[atom].split(':')[0]))*zscale,1,0)))
+					print(float(vzsc*int(order[atom].split(':')[0]))*zscale)
 				else:
 					CYS_new.append(pdbline%((add_acyl,atom_type[atom],cystype,line_sep_bb['ch'],line_sep_bb['rid'],line_sep_bb['x']\
 					+(vxsc*int(order[atom].split(':')[0]))+vxbb,line_sep_bb['y']+(vysc*int(order[atom].split(':')[0]))+vybb,\
 					line_sep_bb['z']+float((vzsc*int(order[atom].split(':')[0]))+vzbb)*zscale,1,0)))
+					print(float(vzsc*int(order[atom].split(':')[0]))*zscale)
+			for i in CYS_new:
+				print(i)
 			break
 		xbb=float(line.split()[5+offset])
 		ybb=float(line.split()[6+offset])
